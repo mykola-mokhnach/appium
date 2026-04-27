@@ -731,7 +731,7 @@ export interface LockFileOptions {
 export interface TruncateStringOptions {
   /** Maximum length of the resulting string. Default 30. */
   length?: number;
-  /** Suffix appended to truncated strings. Default "...". */
+  /** Suffix appended to truncated strings. Default "…". */
   omission?: string;
   /** Optional separator to avoid splitting words/tokens. */
   separator?: string | RegExp;
