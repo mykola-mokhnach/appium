@@ -557,18 +557,11 @@ describe('util', function () {
     });
 
     it('should compare maps and sets', function () {
-      expect(
-        util.isEqual(
-          new Map([
-            ['a', 1],
-            ['b', {c: 2}],
-          ]),
-          new Map([
-            ['a', 1],
-            ['b', {c: 2}],
-          ])
-        )
-      ).to.be.true;
+      const entries: Array<[string, number | {c: number}]> = [
+        ['a', 1],
+        ['b', {c: 2}],
+      ];
+      expect(util.isEqual(new Map(entries), new Map(entries))).to.be.true;
       expect(util.isEqual(new Set([1, 2]), new Set([2, 1]))).to.be.true;
       expect(util.isEqual(new Set([1, 2]), new Set([2, 3]))).to.be.false;
     });
