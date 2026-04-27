@@ -52,6 +52,359 @@ export function hasValue<T>(val: T): val is NonNullable<T> {
 }
 
 /**
+ * Creates a memoized version of a function.
+ * By default, the first argument is used as the cache key.
+ *
+ * @param fn - Function to memoize
+ * @param resolver - Optional cache key resolver
+ * @returns Memoized function with exposed `cache` map
+ */
+export function memoize<Fn extends (...args: any[]) => any, Key = unknown>(
+  fn: Fn,
+  resolver?: (...args: Parameters<Fn>) => Key
+): Fn & {cache: Map<Key, ReturnType<Fn>>} {
+  const cache = new Map<Key, ReturnType<Fn>>();
+  const memoized = function (this: unknown, ...args: Parameters<Fn>): ReturnType<Fn> {
+    const key = (resolver ? resolver(...args) : (args[0] as unknown as Key)) as Key;
+    if (cache.has(key)) {
+      return cache.get(key) as ReturnType<Fn>;
+    }
+    const value = fn.apply(this, args);
+    cache.set(key, value);
+    return value;
+  } as Fn & {cache: Map<Key, ReturnType<Fn>>};
+  memoized.cache = cache;
+  return memoized;
+}
+
+/**
+ * Returns true if the value is a plain object (Object prototype or null prototype).
+ *
+ * @param value - Value to check
+ * @returns `true` if the value is a plain object
+ */
+export function isPlainObject(value: unknown): value is Record<string, unknown> {
+  const objectTag = '[object Object]';
+  const objectProto = Object.prototype;
+  const funcProto = Function.prototype;
+  const hasOwnProperty = objectProto.hasOwnProperty;
+  const funcToString = funcProto.toString;
+  const objectCtorString = funcToString.call(Object);
+
+  const objectToString = (val: unknown) => objectProto.toString.call(val);
+  const isObjectLike = (val: unknown): val is object => typeof val === 'object' && val !== null;
+
+  const getRawTag = (val: unknown): string => {
+    const typedValue = val as Record<PropertyKey, unknown>;
+    const symToStringTag = Symbol.toStringTag;
+    const isOwn = hasOwnProperty.call(typedValue, symToStringTag);
+    const tag = typedValue[symToStringTag];
+    try {
+      typedValue[symToStringTag] = undefined;
+      return objectToString(typedValue);
+    } finally {
+      if (isOwn) {
+        typedValue[symToStringTag] = tag;
+      } else {
+        delete typedValue[symToStringTag];
+      }
+    }
+  };
+
+  const baseGetTag = (val: unknown): string => {
+    if (val == null) {
+      return val === undefined ? '[object Undefined]' : '[object Null]';
+    }
+    return Symbol.toStringTag in Object(val) ? getRawTag(val) : objectToString(val);
+  };
+
+  if (!isObjectLike(value) || baseGetTag(value) !== objectTag) {
+    return false;
+  }
+  const proto = Object.getPrototypeOf(value);
+  if (proto === null) {
+    return true;
+  }
+  const Ctor = hasOwnProperty.call(proto, 'constructor') ? proto.constructor : undefined;
+  return (
+    typeof Ctor === 'function' &&
+    Ctor instanceof Ctor &&
+    Function.prototype.toString.call(Ctor) === objectCtorString
+  );
+}
+
+/**
+ * Returns true when the value has no elements/properties.
+ *
+ * @param value - Value to check
+ * @returns `true` if the value is empty
+ */
+export function isEmpty(value: unknown): boolean {
+  if (value == null) {
+    return true;
+  }
+  if (typeof value === 'string' || Array.isArray(value)) {
+    return value.length === 0;
+  }
+  if (value instanceof Map || value instanceof Set) {
+    return value.size === 0;
+  }
+  if (ArrayBuffer.isView(value)) {
+    return value.byteLength === 0;
+  }
+  if (isPlainObject(value)) {
+    return Object.keys(value).length === 0;
+  }
+  return false;
+}
+
+/**
+ * Performs a deep equality check between two values.
+ *
+ * @param left - First value
+ * @param right - Second value
+ * @returns `true` when values are deeply equal
+ */
+export function isEqual(left: unknown, right: unknown): boolean {
+  return areDeepEqual(left, right, new WeakMap());
+}
+
+const areDeepEqual = (
+  left: unknown,
+  right: unknown,
+  seen: WeakMap<object, Set<object>>
+): boolean => {
+  if (Object.is(left, right)) {
+    return true;
+  }
+  if (typeof left !== typeof right) {
+    return false;
+  }
+  if (left == null || right == null) {
+    return false;
+  }
+  if (typeof left !== 'object' && typeof left !== 'function') {
+    return false;
+  }
+  if (typeof left === 'function' || typeof right === 'function') {
+    // Function values are only equal by strict identity (already handled by Object.is above).
+    return false;
+  }
+
+  const leftObj = left as object;
+  const rightObj = right as object;
+
+  const seenRight = seen.get(leftObj);
+  if (seenRight?.has(rightObj)) {
+    return true;
+  }
+  if (seenRight) {
+    seenRight.add(rightObj);
+  } else {
+    seen.set(leftObj, new Set([rightObj]));
+  }
+
+  if (left instanceof Date && right instanceof Date) {
+    return left.getTime() === right.getTime();
+  }
+  if (left instanceof Error && right instanceof Error) {
+    return left.name === right.name && left.message === right.message;
+  }
+  if (
+    Object.prototype.toString.call(left) === '[object Symbol]' &&
+    Object.prototype.toString.call(right) === '[object Symbol]'
+  ) {
+    return left.valueOf() === right.valueOf();
+  }
+  if (left instanceof RegExp && right instanceof RegExp) {
+    return left.source === right.source && left.flags === right.flags;
+  }
+  if (left instanceof Map && right instanceof Map) {
+    if (left.size !== right.size) {
+      return false;
+    }
+    const unmatchedRightEntries = Array.from(right.entries());
+    for (const [leftKey, leftValue] of left.entries()) {
+      const idx = unmatchedRightEntries.findIndex(
+        ([rightKey, rightValue]) =>
+          areDeepEqual(leftKey, rightKey, seen) && areDeepEqual(leftValue, rightValue, seen)
+      );
+      if (idx < 0) {
+        return false;
+      }
+      unmatchedRightEntries.splice(idx, 1);
+    }
+    return unmatchedRightEntries.length === 0;
+  }
+  if (left instanceof Set && right instanceof Set) {
+    if (left.size !== right.size) {
+      return false;
+    }
+    const unmatchedRightValues = Array.from(right.values());
+    for (const leftValue of left.values()) {
+      const idx = unmatchedRightValues.findIndex((rightValue) =>
+        areDeepEqual(leftValue, rightValue, seen)
+      );
+      if (idx < 0) {
+        return false;
+      }
+      unmatchedRightValues.splice(idx, 1);
+    }
+    return unmatchedRightValues.length === 0;
+  }
+  if (ArrayBuffer.isView(left) && ArrayBuffer.isView(right)) {
+    if (left.byteLength !== right.byteLength) {
+      return false;
+    }
+    const leftBytes = new Uint8Array(left.buffer, left.byteOffset, left.byteLength);
+    const rightBytes = new Uint8Array(right.buffer, right.byteOffset, right.byteLength);
+    for (let i = 0; i < leftBytes.length; i++) {
+      if (leftBytes[i] !== rightBytes[i]) {
+        return false;
+      }
+    }
+    return true;
+  }
+  if (Array.isArray(left) && Array.isArray(right)) {
+    if (left.length !== right.length) {
+      return false;
+    }
+    for (let i = 0; i < left.length; i++) {
+      if (!areDeepEqual(left[i], right[i], seen)) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  const leftTag = Object.prototype.toString.call(left);
+  const rightTag = Object.prototype.toString.call(right);
+  if (leftTag !== rightTag) {
+    return false;
+  }
+
+  const enumerableSymbols = (obj: object) =>
+    Object.getOwnPropertySymbols(obj).filter((s) =>
+      Object.prototype.propertyIsEnumerable.call(obj, s)
+    );
+  const leftKeys = [...Object.keys(leftObj), ...enumerableSymbols(leftObj)];
+  const rightKeys = [...Object.keys(rightObj), ...enumerableSymbols(rightObj)];
+  if (leftKeys.length !== rightKeys.length) {
+    return false;
+  }
+  for (const key of leftKeys) {
+    if (!rightKeys.includes(key)) {
+      return false;
+    }
+    const leftValue = (leftObj as Record<PropertyKey, unknown>)[key];
+    const rightValue = (rightObj as Record<PropertyKey, unknown>)[key];
+    if (!areDeepEqual(leftValue, rightValue, seen)) {
+      return false;
+    }
+  }
+  return true;
+};
+
+/**
+ * Escapes RegExp special characters in a string.
+ *
+ * @param value - Input string
+ * @returns Escaped string safe for RegExp source
+ */
+export function escapeRegExp(value: string): string {
+  return value.replace(/[\\^$.*+?()[\]{}|]/g, '\\$&');
+}
+
+/**
+ * Returns a duplicate-free copy of the input array.
+ *
+ * @param values - Input array
+ * @returns New array with unique values preserving input order
+ */
+export function uniq<T>(values: readonly T[]): T[] {
+  return Array.from(new Set(values));
+}
+
+/**
+ * Assigns default values for undefined properties on the target object.
+ *
+ * @param object - Destination object
+ * @param sources - Source objects providing defaults
+ * @returns The mutated destination object
+ */
+export function defaults<T extends object, S extends object[]>(
+  object: T,
+  ...sources: S
+): T & S[number] {
+  for (const source of sources) {
+    if (source == null) {
+      continue;
+    }
+    for (const key in source) {
+      const objectRecord = object as Record<string, unknown>;
+      if (objectRecord[key] === undefined) {
+        objectRecord[key] = (source as Record<string, unknown>)[key];
+      }
+    }
+  }
+  return object as T & S[number];
+}
+
+/**
+ * Truncates a string to a maximum length.
+ *
+ * @param value - Input string
+ * @param options - Truncation options or max length
+ * @returns Truncated string
+ */
+export function truncateString(value: unknown, options: TruncateStringOptions | number = {}): string {
+  const normalizedOptions = _.isNumber(options) ? {length: options} : options;
+  const {length = 30, omission = '…', separator} = normalizedOptions;
+  let stringValue: string;
+  if (value == null) {
+    stringValue = '';
+  } else if (typeof value === 'string') {
+    stringValue = value;
+  } else {
+    stringValue = `${value}`;
+    if (stringValue === '0' && typeof value === 'number' && 1 / value < 0) {
+      stringValue = '-0';
+    }
+  }
+  if (stringValue.length <= length) {
+    return stringValue;
+  }
+
+  const truncateLength = length - omission.length;
+  if (truncateLength <= 0) {
+    return omission;
+  }
+
+  let result = stringValue.slice(0, truncateLength);
+  if (separator) {
+    if (_.isString(separator)) {
+      const idx = result.lastIndexOf(separator);
+      if (idx >= 0) {
+        result = result.slice(0, idx);
+      }
+    } else {
+      const flags = separator.flags.includes('g') ? separator.flags : `${separator.flags}g`;
+      const separatorRegex = new RegExp(separator.source, flags);
+      let match: RegExpExecArray | null;
+      let lastMatch: RegExpExecArray | null = null;
+      // Find the last separator hit in the already-truncated result.
+      while ((match = separatorRegex.exec(result))) {
+        lastMatch = match;
+      }
+      if (lastMatch && _.isNumber(lastMatch.index)) {
+        result = result.slice(0, lastMatch.index);
+      }
+    }
+  }
+  return `${result}${omission}`;
+}
+
+/**
  * Escapes spaces in a string for use in command-line arguments (e.g. ` ` → `\ `).
  *
  * @param str - String that may contain spaces
@@ -372,6 +725,16 @@ export interface LockFileOptions {
   timeout?: number;
   /** If true, attempt to unlock and retry once if the first acquisition times out (e.g. stale lock). */
   tryRecovery?: boolean;
+}
+
+/** Options for truncateString(). */
+export interface TruncateStringOptions {
+  /** Maximum length of the resulting string. Default 30. */
+  length?: number;
+  /** Suffix appended to truncated strings. Default "...". */
+  omission?: string;
+  /** Optional separator to avoid splitting words/tokens. */
+  separator?: string | RegExp;
 }
 
 /** Guard function that runs the given behavior under the lock. */
