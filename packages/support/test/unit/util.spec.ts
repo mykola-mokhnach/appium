@@ -663,13 +663,13 @@ describe('util', function () {
     });
 
     it('should handle non-string values safely', function () {
-      expect(() => util.truncateString(undefined)).not.to.throw();
-      expect(() => util.truncateString(null)).not.to.throw();
-      expect(util.truncateString(undefined)).to.equal('');
-      expect(util.truncateString(null)).to.equal('');
-      expect(util.truncateString(123456, 5)).to.equal('1234…');
-      expect(util.truncateString({a: 1}, 8)).to.equal('[object…');
-      expect(util.truncateString(-0)).to.equal('-0');
+      expect(() => util.truncateString(undefined as any)).not.to.throw();
+      expect(() => util.truncateString(null as any)).not.to.throw();
+      expect(util.truncateString(undefined as any)).to.equal('');
+      expect(util.truncateString(null as any)).to.equal('');
+      expect(util.truncateString(123456 as any, 5)).to.equal('1234…');
+      expect(util.truncateString({a: 1} as any, 8)).to.equal('[object…');
+      expect(util.truncateString(-0 as any)).to.equal('-0');
     });
 
     it('should return omission if max length is too small', function () {
