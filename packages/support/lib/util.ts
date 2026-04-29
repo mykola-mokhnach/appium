@@ -52,6 +52,85 @@ export function hasValue<T>(val: T): val is NonNullable<T> {
 }
 
 /**
+ * Creates a memoized version of a function.
+ *
+ * @param fn - Function to memoize
+ * @param resolver - Optional cache key resolver
+ * @returns Memoized function
+ */
+export function memoize<Fn extends (...args: any[]) => any>(fn: Fn): Fn {
+  return _.memoize(fn) as unknown as Fn;
+}
+
+/**
+ * Returns true if the value is a plain object (Object prototype or null prototype).
+ *
+ * @param value - Value to check
+ * @returns `true` if the value is a plain object
+ */
+export function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return _.isPlainObject(value);
+}
+
+/**
+ * Returns true when the value has no elements/properties.
+ *
+ * @param value - Value to check
+ * @returns `true` if the value is empty
+ */
+export function isEmpty(value: unknown): boolean {
+  return _.isEmpty(value);
+}
+
+/**
+ * Performs a deep equality check between two values.
+ *
+ * @param left - First value
+ * @param right - Second value
+ * @returns `true` when values are deeply equal
+ */
+export function isEqual(left: unknown, right: unknown): boolean {
+  return _.isEqual(left, right);
+}
+
+/**
+ * Escapes RegExp special characters in a string.
+ *
+ * @param value - Input string
+ * @returns Escaped string safe for RegExp source
+ */
+export function escapeRegExp(value: string): string {
+  return _.escapeRegExp(value);
+}
+
+/**
+ * Returns a duplicate-free copy of the input array.
+ *
+ * @param values - Input array
+ * @returns New array with unique values preserving input order
+ */
+export function uniq<T>(values: readonly T[]): T[] {
+  return _.uniq(values);
+}
+
+/**
+ * Truncates a string to a maximum length.
+ *
+ * @param value - Input string
+ * @param options - Truncation options or max length
+ * @returns Truncated string
+ */
+export function truncateString(value: string, options: TruncateStringOptions | number = {}): string {
+  const normalizedOptions = _.isNumber(options) ? {length: options} : options;
+  const {length, omission = '…'} = normalizedOptions;
+  const truncateOpts: TruncateStringOptions = {omission};
+  if (!_.isUndefined(length)) {
+    truncateOpts.length = length;
+  }
+  return _.truncate(value as string, truncateOpts);
+}
+
+/**
  * Escapes spaces in a string for use in command-line arguments (e.g. ` ` → `\ `).
  *
  * @param str - String that may contain spaces
@@ -372,6 +451,14 @@ export interface LockFileOptions {
   timeout?: number;
   /** If true, attempt to unlock and retry once if the first acquisition times out (e.g. stale lock). */
   tryRecovery?: boolean;
+}
+
+/** Options for truncateString(). */
+export interface TruncateStringOptions {
+  /** Maximum length of the resulting string. Default 30. */
+  length?: number;
+  /** Suffix appended to truncated strings. Default "…". */
+  omission?: string;
 }
 
 /** Guard function that runs the given behavior under the lock. */

@@ -475,4 +475,165 @@ describe('util', function () {
       expect(util.pluralize('word', 2, {inclusive: true})).to.eql('2 words');
     });
   });
+
+  describe('memoize', function () {
+    it('should memoize using first argument by default', function () {
+      let callCount = 0;
+      const fn = util.memoize((value: number) => {
+        callCount += 1;
+        return value * 2;
+      });
+      expect(fn(2)).to.equal(4);
+      expect(fn(2)).to.equal(4);
+      expect(callCount).to.equal(1);
+    });
+
+    it('should memoize by first argument only', function () {
+      let callCount = 0;
+      const fn = util.memoize((a: number, b: number) => {
+        callCount += 1;
+        return a + b;
+      });
+      expect(fn(1, 2)).to.equal(3);
+      expect(fn(1, 999)).to.equal(3);
+      expect(callCount).to.equal(1);
+    });
+  });
+
+  describe('isPlainObject', function () {
+    it('should return true for plain objects', function () {
+      expect(util.isPlainObject({})).to.be.true;
+      expect(util.isPlainObject(Object.create(null))).to.be.true;
+    });
+
+    it('should return false for non-plain objects', function () {
+      expect(util.isPlainObject([])).to.be.false;
+      expect(util.isPlainObject(new Date())).to.be.false;
+      expect(util.isPlainObject(null)).to.be.false;
+    });
+
+    it('should match lodash behavior for edge cases', function () {
+      const spoofed = {a: 1, [Symbol.toStringTag]: 'Custom'};
+      expect(util.isPlainObject(spoofed)).to.be.true;
+
+      function CustomCtor(this: any) {
+        this.a = 1;
+      }
+      const withCustomCtorOnProto = Object.create({constructor: CustomCtor});
+      expect(util.isPlainObject(withCustomCtorOnProto)).to.be.false;
+    });
+  });
+
+  describe('isEmpty', function () {
+    it('should handle strings and arrays', function () {
+      expect(util.isEmpty('')).to.be.true;
+      expect(util.isEmpty('x')).to.be.false;
+      expect(util.isEmpty([])).to.be.true;
+      expect(util.isEmpty([1])).to.be.false;
+    });
+
+    it('should handle objects and collections', function () {
+      expect(util.isEmpty({})).to.be.true;
+      expect(util.isEmpty({a: 1})).to.be.false;
+      expect(util.isEmpty(new Map())).to.be.true;
+      expect(util.isEmpty(new Set([1]))).to.be.false;
+    });
+  });
+
+  describe('isEqual', function () {
+    it('should deeply compare nested objects', function () {
+      expect(util.isEqual({a: [1, {b: 'c'}]}, {a: [1, {b: 'c'}]})).to.be.true;
+      expect(util.isEqual({a: [1, {b: 'c'}]}, {a: [1, {b: 'd'}]})).to.be.false;
+    });
+
+    it('should compare special values and typed objects', function () {
+      expect(util.isEqual(NaN, NaN)).to.be.true;
+      expect(util.isEqual(new Date('2020-01-01'), new Date('2020-01-01'))).to.be.true;
+      expect(util.isEqual(/abc/gi, /abc/gi)).to.be.true;
+      expect(util.isEqual(Buffer.from('a'), Buffer.from('a'))).to.be.true;
+    });
+
+    it('should compare maps and sets', function () {
+      const entries: Array<[string, number | {c: number}]> = [
+        ['a', 1],
+        ['b', {c: 2}],
+      ];
+      expect(util.isEqual(new Map(entries), new Map(entries))).to.be.true;
+      expect(util.isEqual(new Set([1, 2]), new Set([2, 1]))).to.be.true;
+      expect(util.isEqual(new Set([1, 2]), new Set([2, 3]))).to.be.false;
+    });
+
+    it('should compare functions by identity only', function () {
+      const fn1 = () => 1;
+      const fn2 = () => 1;
+      (fn1 as any).x = 1;
+      (fn2 as any).x = 1;
+      expect(util.isEqual(fn1, fn1)).to.be.true;
+      expect(util.isEqual(fn1, fn2)).to.be.false;
+    });
+
+    it('should ignore non-enumerable own properties', function () {
+      const left: Record<string, unknown> = {a: 1};
+      const right: Record<string, unknown> = {a: 1};
+      Object.defineProperty(left, 'hidden', {value: 1, enumerable: false});
+      Object.defineProperty(right, 'hidden', {value: 2, enumerable: false});
+      expect(util.isEqual(left, right)).to.be.true;
+    });
+
+    it('should compare errors and boxed symbols like lodash', function () {
+      expect(util.isEqual(new Error('boom'), new Error('boom'))).to.be.true;
+      expect(util.isEqual(new Error('boom'), new Error('kaboom'))).to.be.false;
+      expect(util.isEqual(Object(Symbol.for('x')), Object(Symbol.for('x')))).to.be.true;
+      expect(util.isEqual(Object(Symbol.for('x')), Object(Symbol.for('y')))).to.be.false;
+    });
+  });
+
+  describe('escapeRegExp', function () {
+    it('should escape regexp metacharacters', function () {
+      expect(util.escapeRegExp('a+b*c?.(x)[y]{z}|^$\\')).to.equal(
+        'a\\+b\\*c\\?\\.\\(x\\)\\[y\\]\\{z\\}\\|\\^\\$\\\\'
+      );
+    });
+  });
+
+  describe('uniq', function () {
+    it('should return a duplicate-free array preserving order', function () {
+      expect(util.uniq([1, 2, 1, 3, 2])).to.eql([1, 2, 3]);
+    });
+  });
+
+  describe('truncateString', function () {
+    it('should not change short strings', function () {
+      expect(util.truncateString('short')).to.equal('short');
+    });
+
+    it('should truncate with default options', function () {
+      const src = 'abcdefghijklmnopqrstuvwxyz0123456789';
+      expect(util.truncateString(src)).to.equal('abcdefghijklmnopqrstuvwxyz012…');
+    });
+
+    it('should support numeric length shorthand', function () {
+      expect(util.truncateString('abcdefghijklmnopqrstuvwxyz', 10)).to.equal('abcdefghi…');
+    });
+
+    it('should support custom omission', function () {
+      expect(util.truncateString('abcdefghijklmnopqrstuvwxyz', {length: 10, omission: '..'})).to.equal(
+        'abcdefgh..'
+      );
+    });
+
+    it('should handle non-string values safely', function () {
+      expect(() => util.truncateString(undefined as any)).not.to.throw();
+      expect(() => util.truncateString(null as any)).not.to.throw();
+      expect(util.truncateString(undefined as any)).to.equal('');
+      expect(util.truncateString(null as any)).to.equal('');
+      expect(util.truncateString(123456 as any, 5)).to.equal('1234…');
+      expect(util.truncateString({a: 1} as any, 8)).to.equal('[object…');
+      expect(util.truncateString(-0 as any)).to.equal('-0');
+    });
+
+    it('should return omission if max length is too small', function () {
+      expect(util.truncateString('hello world', 0)).to.equal('…');
+    });
+  });
 });
