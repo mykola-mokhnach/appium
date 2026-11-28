@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import {mkdtemp, rm, writeFile} from 'node:fs/promises';
+import {mkdir, mkdtemp, rm, writeFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {afterEach, beforeEach, describe, it} from 'node:test';
@@ -11,6 +11,7 @@ import {
   readDeclaredDependencies,
   type PackageImportContext,
 } from '../../../lib/analysis/package-imports.js';
+import {createTypesResolver} from '../../../lib/analysis/type-resolution.js';
 import {mod} from './modules.js';
 
 describe('parseScopedSpecifier', () => {
@@ -93,6 +94,7 @@ describe('findPackageImports', () => {
     undeclaredDependencies: 'error',
     declared: {name: 'me', runtime: new Set(['dep']), dev: new Set(['dev-only']), typed: new Set(['typed'])},
     runtimeModules: [],
+    resolveTypes: async () => undefined,
     ...overrides,
   });
   const keys = async (modules: ReturnType<typeof mod>[], ctx = context()) =>
@@ -146,25 +148,53 @@ describe('findPackageImports', () => {
     assert.deepEqual(await keys(typeOnly, context({runtimeModules: typeOnly})), ['lib/a.ts -> dev-only']);
   });
 
-  it('accepts an @types package for type-only imports of its root and of subpaths it provides', async () => {
-    const modules = [
-      mod('lib/a.ts', [
-        {module: 'typed', resolved: 'node_modules/@types/typed/index.d.ts'},
-        {module: 'typed/extra', resolved: 'node_modules/@types/typed/extra.d.ts'},
-      ]),
-    ];
-    assert.deepEqual(await keys(modules), []);
-    assert.deepEqual(await keys(modules, context({runtimeModules: modules})), ['lib/a.ts -> typed']);
-  });
+  describe('@types subpaths', () => {
+    let workspace: string;
 
-  it('rejects a subpath that resolves outside the @types package', async () => {
-    const modules = [
-      mod('lib/a.ts', [
-        {module: 'typed/extra', resolved: 'node_modules/typed/extra.d.ts'},
-        {module: 'typed/gone', resolved: 'typed/gone', couldNotResolve: true},
-      ]),
-    ];
-    assert.deepEqual(await keys(modules), ['lib/a.ts -> typed']);
+    // `dep` is hoisted next to the workspace; only `@types/typed` is declared by it
+    beforeEach(async () => {
+      workspace = path.join(packageDir, 'ws');
+      const write = async (file: string, content: string) => {
+        await mkdir(path.dirname(path.join(packageDir, file)), {recursive: true});
+        await writeFile(path.join(packageDir, file), content);
+      };
+      await write('ws/tsconfig.json', '{"compilerOptions": {"moduleResolution": "bundler", "module": "esnext"}}');
+      await write('ws/lib/a.ts', '');
+      await write('node_modules/typed/package.json', '{"name": "typed"}');
+      await write('node_modules/typed/chunk.js', '');
+      await write('node_modules/typed/own.js', '');
+      await write('node_modules/typed/own.d.ts', '');
+      await write('node_modules/@types/typed/package.json', '{"name": "@types/typed"}');
+      await write('node_modules/@types/typed/index.d.ts', '');
+      await write('node_modules/@types/typed/chunk.d.ts', '');
+    });
+
+    const typedContext = () =>
+      context({
+        packageDir: workspace,
+        resolveTypes: createTypesResolver(workspace, 'tsconfig.json'),
+        declared: {name: 'me', runtime: new Set(), dev: new Set(), typed: new Set(['typed'])},
+      });
+
+    it('accepts a subpath whose types TypeScript takes from @types, though dependency-cruiser reports the .js file', async () => {
+      const modules = [mod('lib/a.ts', ['typed', {module: 'typed/chunk', resolved: 'node_modules/typed/chunk.js'}])];
+      assert.deepEqual(await keys(modules, typedContext()), []);
+    });
+
+    it('rejects a subpath that @types does not provide', async () => {
+      const modules = [
+        mod('lib/a.ts', [
+          {module: 'typed/own', resolved: 'node_modules/typed/own.js'},
+          {module: 'typed/gone', resolved: 'typed/gone', couldNotResolve: true},
+        ]),
+      ];
+      assert.deepEqual(await keys(modules, typedContext()), ['lib/a.ts -> typed']);
+    });
+
+    it('does not accept @types for runtime imports', async () => {
+      const modules = [mod('lib/a.ts', ['typed'])];
+      assert.deepEqual(await keys(modules, {...typedContext(), runtimeModules: modules}), ['lib/a.ts -> typed']);
+    });
   });
 
   it('reports deep imports of scoped packages that are not exported', async () => {

@@ -7,6 +7,7 @@ import type {IModule} from 'dependency-cruiser';
 import type {ArchwardConfig} from '../types.js';
 import {byString} from '../util.js';
 import {isExportedSubpath, readInstalledExports} from './exports.js';
+import type {TypesResolver} from './type-resolution.js';
 
 const BUILTINS = new Set(builtinModules);
 
@@ -28,6 +29,8 @@ export interface PackageImportContext {
   declared: DeclaredDependencies;
   /** The graph without type-only imports; an import missing from it is erased at runtime. */
   runtimeModules: readonly IModule[];
+  /** Resolves imports like TypeScript, to tell where the types of a subpath come from. */
+  resolveTypes: TypesResolver;
 }
 
 export interface PackageImportFinding {
@@ -58,7 +61,7 @@ export async function findPackageImports(
   modules: readonly IModule[],
   context: PackageImportContext,
 ): Promise<PackageImportFinding[]> {
-  const {prefix, entryPointScopes, undeclaredDependencies, declared, runtimeModules} = context;
+  const {prefix, entryPointScopes, undeclaredDependencies, declared, runtimeModules, resolveTypes} = context;
   const runtimeImports = new Set(runtimeModules.flatMap((m) => m.dependencies.map((d) => `${m.source}\0${d.module}`)));
   const exportsOf = createExportsLookup(context.packageDir);
   const findings = new Map<string, string>();
@@ -83,7 +86,11 @@ export async function findPackageImports(
         external &&
         external !== declared.name &&
         !declared.runtime.has(external) &&
-        !(isTypeOnly && (declared.dev.has(external) || (declared.typed.has(external) && typesResolve(dep, external))))
+        !(
+          isTypeOnly &&
+          (declared.dev.has(external) ||
+            (declared.typed.has(external) && (await typesResolve(resolveTypes, mod.source, dep.module, external))))
+        )
       ) {
         findings.set(
           `${mod.source} -> ${external}`,
@@ -137,8 +144,16 @@ function typedPackage(name: string): string | null {
  * Whether the types of an import that `@types/*` declares come from that package. A subpath is not
  * covered by the root's `@types`: a hoisted copy of the package could be what resolved it.
  */
-function typesResolve(dep: {module: string; resolved: string}, pkg: string): boolean {
-  return dep.module === pkg || dep.resolved.includes(`node_modules/${typesPackageName(pkg)}/`);
+async function typesResolve(
+  resolveTypes: TypesResolver,
+  from: string,
+  specifier: string,
+  pkg: string,
+): Promise<boolean> {
+  return (
+    specifier === pkg ||
+    ((await resolveTypes(specifier, from)) ?? '').includes(`node_modules/${typesPackageName(pkg)}/`)
+  );
 }
 
 function typesPackageName(pkg: string): string {

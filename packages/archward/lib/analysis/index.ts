@@ -6,6 +6,7 @@ import {classifyCycles} from './cycles.js';
 import {cruiseBoth, findUnresolvedImports} from './graph.js';
 import {allowedEdges, buildOwnership, exportModel} from './model.js';
 import {findPackageImports, readDeclaredDependencies} from './package-imports.js';
+import {createTypesResolver} from './type-resolution.js';
 
 /**
  * Finds everything in the package's source that the architecture model and the package rules
@@ -36,6 +37,7 @@ export async function analyze(config: ResolvedConfig): Promise<Analysis> {
       undeclaredDependencies: config.undeclaredDependencies,
       declared,
       runtimeModules: runtime.modules,
+      resolveTypes: createTypesResolver(config.packageDir, config.tsconfig),
     }),
     unresolvedImports: findUnresolvedImports(withTypes.modules.filter((m) => m.source.startsWith(prefix))),
     ...classifyCycles(withTypes, runtime, config.typeOnlyCycles),
