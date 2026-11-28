@@ -63,14 +63,12 @@ describe('readDeclaredDependencies', () => {
       const declared = await readDeclaredDependencies(dir);
       assert.deepEqual([...declared.runtime], ['a']);
       assert.deepEqual([...declared.dev].sort(), [
-        '@babel/core',
-        '@foo_bar/baz',
         '@types/babel__core',
         '@types/foo_bar__baz',
         '@types/json-schema',
         'b',
-        'json-schema',
       ]);
+      assert.deepEqual([...declared.typed].sort(), ['@babel/core', '@foo_bar/baz', 'json-schema']);
     } finally {
       await rm(dir, {recursive: true, force: true});
     }
@@ -93,7 +91,7 @@ describe('findPackageImports', () => {
     prefix: 'lib/',
     entryPointScopes: ['@scope'],
     undeclaredDependencies: 'error',
-    declared: {name: 'me', runtime: new Set(['dep']), dev: new Set(['dev-only'])},
+    declared: {name: 'me', runtime: new Set(['dep']), dev: new Set(['dev-only']), typed: new Set(['typed'])},
     runtimeModules: [],
     ...overrides,
   });
@@ -148,9 +146,33 @@ describe('findPackageImports', () => {
     assert.deepEqual(await keys(typeOnly, context({runtimeModules: typeOnly})), ['lib/a.ts -> dev-only']);
   });
 
+  it('accepts an @types package for type-only imports of its root and of subpaths it provides', async () => {
+    const modules = [
+      mod('lib/a.ts', [
+        {module: 'typed', resolved: 'node_modules/@types/typed/index.d.ts'},
+        {module: 'typed/extra', resolved: 'node_modules/@types/typed/extra.d.ts'},
+      ]),
+    ];
+    assert.deepEqual(await keys(modules), []);
+    assert.deepEqual(await keys(modules, context({runtimeModules: modules})), ['lib/a.ts -> typed']);
+  });
+
+  it('rejects a subpath that resolves outside the @types package', async () => {
+    const modules = [
+      mod('lib/a.ts', [
+        {module: 'typed/extra', resolved: 'node_modules/typed/extra.d.ts'},
+        {module: 'typed/gone', resolved: 'typed/gone', couldNotResolve: true},
+      ]),
+    ];
+    assert.deepEqual(await keys(modules), ['lib/a.ts -> typed']);
+  });
+
   it('reports deep imports of scoped packages that are not exported', async () => {
     const modules = [mod('lib/a.ts', ['@scope/dep/lib/x.js'])];
-    const ctx = context({runtimeModules: modules, declared: {runtime: new Set(['@scope/dep']), dev: new Set()}});
+    const ctx = context({
+      runtimeModules: modules,
+      declared: {runtime: new Set(['@scope/dep']), dev: new Set(), typed: new Set()},
+    });
     assert.deepEqual(await keys(modules, ctx), ['lib/a.ts -> @scope/dep/lib/x.js']);
   });
 

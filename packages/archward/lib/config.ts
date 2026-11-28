@@ -1,7 +1,7 @@
 import {readFile, realpath} from 'node:fs/promises';
 import path from 'node:path';
 
-import type {ArchwardConfig, ResolvedConfig} from './types.js';
+import type {ArchwardConfig, LoadedConfig} from './types.js';
 
 export const ARCHITECTURE_DIR = 'architecture';
 
@@ -19,7 +19,7 @@ const CONFIG_KEYS = new Set([
  * Resolves the settings of the package in `packageDir`, applying defaults over the optional
  * `architecture/config.json`.
  */
-export async function loadConfig(packageDir: string): Promise<ResolvedConfig> {
+export async function loadConfig(packageDir: string): Promise<LoadedConfig> {
   // dependency-cruiser reports real paths, so symlinked directories (e.g. macOS /tmp) must be resolved
   const root = await realpath(path.resolve(packageDir));
   const modelDir = path.join(root, ARCHITECTURE_DIR);

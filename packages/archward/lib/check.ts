@@ -1,7 +1,7 @@
 import {analyze} from './analysis/index.js';
 import {diffAgainstBaseline, readBaseline, writeBaseline} from './baseline.js';
 import {loadConfig} from './config.js';
-import type {Analysis, CheckResult, Finding, ImportedBoundary, ResolvedConfig} from './types.js';
+import type {Analysis, CheckResult, Finding, ImportedBoundary, LoadedConfig} from './types.js';
 import {boundaryKey} from './util.js';
 
 /**
@@ -63,7 +63,7 @@ export async function updateBaseline(packageDir: string): Promise<Analysis & {un
 }
 
 /** Findings that the baseline cannot tolerate: they must be fixed. */
-function unbaselinableFindings(config: ResolvedConfig, analysis: Analysis): Finding[] {
+function unbaselinableFindings(config: LoadedConfig, analysis: Analysis): Finding[] {
   return [
     ...analysis.unownedFiles.map((file) => ({
       rule: 'unowned-file' as const,

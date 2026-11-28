@@ -15,6 +15,8 @@ export interface DeclaredDependencies {
   /** `dependencies`, `peerDependencies` and `optionalDependencies`. */
   runtime: ReadonlySet<string>;
   dev: ReadonlySet<string>;
+  /** Packages whose types are declared by an `@types/*` dependency. */
+  typed: ReadonlySet<string>;
 }
 
 export interface PackageImportContext {
@@ -43,8 +45,8 @@ export async function readDeclaredDependencies(packageDir: string): Promise<Decl
   return {
     name: pkg.name,
     runtime: names(['dependencies', 'peerDependencies', 'optionalDependencies']),
-    // `@types/x` declares the types of `x`, which is enough for type-only imports of `x`
-    dev: new Set([...names(['devDependencies']), ...[...all].flatMap((name) => typedPackage(name) ?? [])]),
+    dev: names(['devDependencies']),
+    typed: new Set([...all].flatMap((name) => typedPackage(name) ?? [])),
   };
 }
 
@@ -81,7 +83,7 @@ export async function findPackageImports(
         external &&
         external !== declared.name &&
         !declared.runtime.has(external) &&
-        !(declared.dev.has(external) && isTypeOnly)
+        !(isTypeOnly && (declared.dev.has(external) || (declared.typed.has(external) && typesResolve(dep, external))))
       ) {
         findings.set(
           `${mod.source} -> ${external}`,
@@ -129,6 +131,18 @@ export function externalPackageName(specifier: string): string | null {
 function typedPackage(name: string): string | null {
   const match = /^@types\/(.+)$/.exec(name);
   return match ? match[1].replace(/^(.+?)__(.+)$/, '@$1/$2') : null;
+}
+
+/**
+ * Whether the types of an import that `@types/*` declares come from that package. A subpath is not
+ * covered by the root's `@types`: a hoisted copy of the package could be what resolved it.
+ */
+function typesResolve(dep: {module: string; resolved: string}, pkg: string): boolean {
+  return dep.module === pkg || dep.resolved.includes(`node_modules/${typesPackageName(pkg)}/`);
+}
+
+function typesPackageName(pkg: string): string {
+  return `@types/${pkg.replace(/^@(.+?)\/(.+)$/, '$1__$2')}`;
 }
 
 /**

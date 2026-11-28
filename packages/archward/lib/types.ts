@@ -40,11 +40,16 @@ export interface ResolvedConfig {
   entryPointScopes: string[];
   typeOnlyCycles: 'error' | 'ignore';
   undeclaredDependencies: 'error' | 'ignore';
-  unusedEdges: 'warn' | 'error';
-  unresolvedImports: 'warn' | 'error';
+  /** Default: `warn`. */
+  unusedEdges?: 'warn' | 'error';
+  /** Default: `warn`. */
+  unresolvedImports?: 'warn' | 'error';
   modelDir: string;
   baselineFile: string;
 }
+
+/** A `ResolvedConfig` whose defaults have all been applied, as returned by `loadConfig()`. */
+export type LoadedConfig = ResolvedConfig & Required<Pick<ResolvedConfig, 'unusedEdges' | 'unresolvedImports'>>;
 
 /** The subset of the exported LikeC4 model this tool reads. */
 export interface ArchitectureModel {
