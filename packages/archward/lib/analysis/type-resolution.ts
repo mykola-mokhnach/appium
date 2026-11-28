@@ -17,8 +17,12 @@ export function createTypesResolver(packageDir: string, tsconfig: string): Types
       ts.sys,
       path.dirname(configFile),
     );
-    return (specifier: string, containingFile: string) =>
-      ts.resolveModuleName(specifier, containingFile, parsed.options, ts.sys).resolvedModule?.resolvedFileName;
+    return (specifier: string, containingFile: string) => {
+      // under node16/nodenext the file's format (`.mts`, `"type": "module"`) selects the `import` or `require` condition
+      const mode = ts.getImpliedNodeFormatForFile(containingFile, undefined, ts.sys, parsed.options);
+      return ts.resolveModuleName(specifier, containingFile, parsed.options, ts.sys, undefined, undefined, mode)
+        .resolvedModule?.resolvedFileName;
+    };
   };
   return async (specifier, containingFile) => {
     setup ??= init();

@@ -167,6 +167,17 @@ describe('findPackageImports', () => {
       await write('node_modules/@types/typed/package.json', '{"name": "@types/typed"}');
       await write('node_modules/@types/typed/index.d.ts', '');
       await write('node_modules/@types/typed/chunk.d.ts', '');
+      await write(
+        'ws/tsconfig.nodenext.json',
+        '{"compilerOptions": {"moduleResolution": "nodenext", "module": "nodenext"}}',
+      );
+      await write('ws/lib/a.mts', '');
+      await write('ws/lib/a.cts', '');
+      await write('node_modules/@types/typed/esm.d.ts', '');
+      await write(
+        'node_modules/@types/typed/package.json',
+        '{"name": "@types/typed", "exports": {".": "./index.d.ts", "./chunk": "./chunk.d.ts", "./esm": {"import": "./esm.d.ts"}}}',
+      );
     });
 
     const typedContext = () =>
@@ -189,6 +200,12 @@ describe('findPackageImports', () => {
         ]),
       ];
       assert.deepEqual(await keys(modules, typedContext()), ['lib/a.ts -> typed']);
+    });
+
+    it('picks the import or require condition of @types exports from the importing file', async () => {
+      const ctx = {...typedContext(), resolveTypes: createTypesResolver(workspace, 'tsconfig.nodenext.json')};
+      assert.deepEqual(await keys([mod('lib/a.mts', ['typed/esm'])], ctx), []);
+      assert.deepEqual(await keys([mod('lib/a.cts', ['typed/esm'])], ctx), ['lib/a.cts -> typed']);
     });
 
     it('does not accept @types for runtime imports', async () => {
